@@ -1,0 +1,110 @@
+# Miscellaneous
+
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IDEs
+
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code (uncomment if you don't want workspace settings in git)
+
+#.vscode/
+
+# Flutter / Dart
+
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+.pub-cache/
+build/
+coverage/
+
+# Flutter generated
+
+**/doc/api/
+**/ios/Flutter/.last_build_id
+
+# Symbolication
+
+app.*.symbols
+
+# Obfuscation
+
+app.*.map.json
+
+# Android
+
+/android/app/debug/
+/android/app/profile/
+/android/app/release/
+/android/.gradle/
+
+# iOS
+
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+
+# macOS
+
+macos/Flutter/ephemeral/
+
+# Linux
+
+linux/flutter/ephemeral/
+
+# Windows
+
+windows/flutter/ephemeral/
+
+# Generated plugin symlinks
+
+**/.plugin_symlinks/
+
+# Firebase (if added later)
+
+google-services.json
+GoogleService-Info.plist
+
+# Environment files
+
+.env
+.env.*
+
+# MQTT / Secret configs
+
+secrets.dart
+mqtt_config.dart
+
+# Temporary files
+
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Build outputs
+
+/build/
+dist/
+
+# OS files
+
+Thumbs.db
+Desktop.ini
