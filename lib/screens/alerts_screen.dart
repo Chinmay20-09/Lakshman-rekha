@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/app_state.dart';
 import '../theme/app_theme.dart';
+import 'alert_history_screen.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
@@ -44,7 +45,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Incident Alerts')),
+      appBar: AppBar(title: const Text('Incident Alerts'), actions: [
+        IconButton(
+          tooltip: 'View history',
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AlertHistoryScreen())),
+          icon: const Icon(Icons.history),
+        )
+      ]),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         child: Column(

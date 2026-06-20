@@ -2,8 +2,19 @@ import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'models/app_state.dart';
+import 'local_notifications.dart';
+import 'services/mqtt.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await AppState().load();
+  await MQTTService.instance.connect();
+
+  await LocalNotificationService.initialize();
+  await LocalNotificationService.requestPermissions();
+  debugPrint('Notification service initialized');
+
   runApp(const LakshmanRekhaApp());
 }
 
@@ -18,7 +29,7 @@ class _LakshmanRekhaAppState extends State<LakshmanRekhaApp> {
   @override
   void initState() {
     super.initState();
-    // Listen to theme changes from the global AppState singleton
+
     AppState().addListener(_onThemeChange);
   }
 

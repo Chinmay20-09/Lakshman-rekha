@@ -30,7 +30,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> triggerAlertVibration() async {
-    if (await Vibration.hasVibrator() && await Vibration.hasCustomVibrationsSupport()) {
+    if (await Vibration.hasVibrator() &&
+        await Vibration.hasCustomVibrationsSupport()) {
       Vibration.vibrate(
         pattern: [0, 500, 200, 500],
         repeat: 0, // repeat from index 0
@@ -39,31 +40,16 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _onStateChange() async {
-  if (!mounted) return;
-
-  setState(() {});
-
-  if (!AppState().isSafe) {
-    await triggerAlertVibration();
-
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Emergency alert delivered. Stay calm.'),
-        backgroundColor: AppTheme.alertRed,
-        action: SnackBarAction(
-          label: 'Resolve',
-          textColor: Colors.white,
-          onPressed: () {
-            Vibration.cancel();
-            AppState().resolveAlerts();
-          },
-        ),
-      ),
-    );
+    setState(() {});
+
+    if (!AppState().isSafe) {
+      await triggerAlertVibration();
+
+      if (!mounted) return;
+    }
   }
-}
 
   void resolveAlerts() {
     Vibration.cancel();
@@ -110,28 +96,29 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   GestureDetector(
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            state.isDeviceOnline
-                                ? 'Device connected'
-                                : 'Device offline',
-                          ),
-                        ),
-                      );
-                    },
-                    child: CircleAvatar(
-                      radius: 24,
-                      backgroundColor: state.isDeviceOnline
-                          ? AppTheme.accentSafe
-                          : Colors.grey.shade700,
-                      child: Icon(
-                        state.isDeviceOnline
-                            ? Icons.wifi_outlined
-                            : Icons.wifi_off,
-                        color: Colors.white,
+                    showDialog<void>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Device Status'),
+                        content: Text(state.isDeviceOnline ? 'Device connected' : 'Device offline'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))
+                        ],
                       ),
+                    );
+                  },
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: state.isDeviceOnline
+                        ? AppTheme.accentSafe
+                        : Colors.grey.shade700,
+                    child: Icon(
+                      state.isDeviceOnline
+                          ? Icons.wifi_outlined
+                          : Icons.wifi_off,
+                      color: Colors.white,
                     ),
+                  ),
                   ),
                 ],
               ),
