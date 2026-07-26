@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import '../models/app_state.dart';
+import 'voice.dart';
 
 class MQTTService {
+  final TTSService tts = TTSService();
   MQTTService._();
 
   static final MQTTService instance = MQTTService._();
@@ -52,10 +54,12 @@ debugPrint("PAYLOAD CLEAN: [$cleanPayload]");
 
 if (cleanPayload == "sos") {
   AppState().triggerSOSAlert();
+   tts.speak("SOS activated");
 }
 
 if (cleanPayload == "intrusion") {
   AppState().triggerIntrusionAlert();
+  tts.speak("Intrusion Alert.");
 }
 
   
