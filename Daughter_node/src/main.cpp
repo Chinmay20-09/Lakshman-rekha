@@ -2,32 +2,35 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_bt.h>
 
 // =====================================================
 // BUTTON PINS
 // =====================================================
-
 #define INTRUSION_BUTTON_PIN 27
 #define SOS_BUTTON_PIN 25
 
 // =====================================================
-// ESP-NOW CHANNEL
+// ESP-NOW CHANNEL (must match Mother Node + router channel)
 // =====================================================
+#define ESPNOW_CHANNEL 2
 
-#define ESPNOW_CHANNEL 10
+// =====================================================
+// ALERT CODES (must match Mother Node)
+// =====================================================
+#define MSG_INTRUSION 1
+#define MSG_SOS 2
 
 // =====================================================
 // MOTHER NODE MAC ADDRESS
 // =====================================================
-
 uint8_t receiverMAC[] = {
     0xB0, 0xCB, 0xD8,
     0xC6, 0xA5, 0xA8};
 
 // =====================================================
-// ESP-NOW MESSAGE
+// ESP-NOW MESSAGE (must match Mother Node)
 // =====================================================
-
 typedef struct struct_message
 {
   int value;
@@ -40,23 +43,27 @@ esp_now_peer_info_t peerInfo;
 // =====================================================
 // BUTTON STATES
 // =====================================================
-
 bool lastIntrusionState = HIGH;
 bool lastSOSState = HIGH;
 
 // =====================================================
+// SEND STATE (used for retry-on-fail)
+// =====================================================
+volatile bool lastSendFailed = false;
+
+// =====================================================
 // SEND CALLBACK
 // =====================================================
-
 void OnDataSent(
     const uint8_t *mac_addr,
     esp_now_send_status_t status)
 {
+  lastSendFailed = (status != ESP_NOW_SEND_SUCCESS);
+
   Serial.println();
   Serial.println("[ESPNOW] ===== SEND CALLBACK =====");
-
   Serial.printf(
-      "[ESPNOW] Receiver: %02X:%02X:%02X:%02X:%02X:%02X:%02X\n",
+      "[ESPNOW] Receiver: %02X:%02X:%02X:%02X:%02X:%02X\n",
       mac_addr[0],
       mac_addr[1],
       mac_addr[2],
@@ -80,9 +87,8 @@ void OnDataSent(
 }
 
 // =====================================================
-// SEND MESSAGE
+// SEND MESSAGE (retries up to 3 times if no ACK)
 // =====================================================
-
 void sendMessage(
     int messageValue,
     const char *messageName)
@@ -105,23 +111,50 @@ void sendMessage(
       "[SEND] Packet size: %d bytes\n",
       sizeof(outgoingData));
 
-  esp_err_t result =
-      esp_now_send(
-          receiverMAC,
-          (uint8_t *)&outgoingData,
-          sizeof(outgoingData));
-
-  Serial.printf(
-      "[SEND] esp_now_send(): %s (0x%x)\n",
-      (result == ESP_OK)
-          ? "ESP_OK"
-          : esp_err_to_name(result),
-      result);
-
-  if (result != ESP_OK)
+  for (int attempt = 1; attempt <= 3; attempt++)
   {
-    Serial.println(
-        "[SEND] ERROR: Failed to start transmission");
+    lastSendFailed = false;
+
+    esp_err_t result =
+        esp_now_send(
+            receiverMAC,
+            (uint8_t *)&outgoingData,
+            sizeof(outgoingData));
+
+    Serial.printf(
+        "[SEND] esp_now_send(): %s (0x%x)\n",
+        (result == ESP_OK)
+            ? "ESP_OK"
+            : esp_err_to_name(result),
+        result);
+
+    if (result != ESP_OK)
+    {
+      Serial.println(
+          "[SEND] ERROR: Failed to start transmission");
+      break;
+    }
+
+    delay(100); // give the callback time to report the ACK verdict
+
+    if (!lastSendFailed)
+    {
+      Serial.println(
+          "[SEND] Delivery confirmed (ACK)");
+      break;
+    }
+
+    if (attempt < 3)
+    {
+      Serial.printf(
+          "[SEND] Attempt %d/3: no ACK, retrying...\n",
+          attempt);
+    }
+    else
+    {
+      Serial.println(
+          "[SEND] ERROR: Delivery failed after 3 attempts");
+    }
   }
 
   Serial.println(
@@ -131,7 +164,6 @@ void sendMessage(
 // =====================================================
 // SETUP
 // =====================================================
-
 void setup()
 {
   Serial.begin(115200);
@@ -185,11 +217,18 @@ void setup()
 
   WiFi.setSleep(false);
 
+  // Free the radio from Bluetooth coexistence.
+
+  btStop();
+
   Serial.println(
       "[WIFI] Mode: STA");
 
   Serial.println(
       "[WIFI] Sleep: DISABLED");
+
+  Serial.println(
+      "[WIFI] BT: OFF");
 
   Serial.print(
       "[WIFI] Daughter MAC: ");
@@ -321,7 +360,7 @@ void setup()
       "[ESPNOW] Mother configuration:");
 
   Serial.printf(
-      "[ESPNOW] Mother MAC: %02X:%02X:%02X:%02X:%02X:%02X:%02X\n",
+      "[ESPNOW] Mother MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
       receiverMAC[0],
       receiverMAC[1],
       receiverMAC[2],
@@ -389,7 +428,6 @@ void setup()
 // =====================================================
 // LOOP
 // =====================================================
-
 void loop()
 {
   // =================================================
@@ -415,15 +453,11 @@ void loop()
     Serial.println(
         "[BUTTON] INTRUSION PRESSED");
 
-    // value = 1
-
     sendMessage(
-        1,
+        MSG_INTRUSION,
         "INTRUSION");
 
-    // Debounce
-
-    delay(200);
+    delay(200); // Debounce
   }
 
   // =================================================
@@ -437,15 +471,11 @@ void loop()
     Serial.println(
         "[BUTTON] SOS PRESSED");
 
-    // value = 2
-
     sendMessage(
-        2,
+        MSG_SOS,
         "SOS");
 
-    // Debounce
-
-    delay(200);
+    delay(200); // Debounce
   }
 
   // =================================================
