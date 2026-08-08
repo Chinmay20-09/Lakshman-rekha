@@ -1,14 +1,32 @@
 #include <Arduino.h>
-
-#include <esp_now.h>
 #include <WiFi.h>
+#include <esp_now.h>
 #include <esp_wifi.h>
 
-#define BUTTON_PIN 27
+// =====================================================
+// BUTTON PINS
+// =====================================================
+
+#define INTRUSION_BUTTON_PIN 27
+#define SOS_BUTTON_PIN 25
+
+// =====================================================
+// ESP-NOW CHANNEL
+// =====================================================
+
 #define ESPNOW_CHANNEL 10
 
+// =====================================================
+// MOTHER NODE MAC ADDRESS
+// =====================================================
+
 uint8_t receiverMAC[] = {
-    0xB0, 0xCB, 0xD8, 0xC6, 0xA5, 0xA8}; // Mother node MAC
+    0xB0, 0xCB, 0xD8,
+    0xC6, 0xA5, 0xA8};
+
+// =====================================================
+// ESP-NOW MESSAGE
+// =====================================================
 
 typedef struct struct_message
 {
@@ -18,167 +36,427 @@ typedef struct struct_message
 struct_message outgoingData;
 
 esp_now_peer_info_t peerInfo;
-const unsigned long SOS_HOLD_TIME = 3000;
-bool buttonPressed = false;
-bool sosSentThisPress = false;
-unsigned long pressStart = 0;
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
+// =====================================================
+// BUTTON STATES
+// =====================================================
+
+bool lastIntrusionState = HIGH;
+bool lastSOSState = HIGH;
+
+// =====================================================
+// SEND CALLBACK
+// =====================================================
+
+void OnDataSent(
+    const uint8_t *mac_addr,
+    esp_now_send_status_t status)
 {
   Serial.println();
-  Serial.println("[SEND] +++++ ESP-NOW Send Callback +++++");
-  Serial.printf("[SEND] Receiver MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
-                mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.println("[ESPNOW] ===== SEND CALLBACK =====");
+
+  Serial.printf(
+      "[ESPNOW] Receiver: %02X:%02X:%02X:%02X:%02X:%02X:%02X\n",
+      mac_addr[0],
+      mac_addr[1],
+      mac_addr[2],
+      mac_addr[3],
+      mac_addr[4],
+      mac_addr[5]);
 
   if (status == ESP_NOW_SEND_SUCCESS)
   {
-    Serial.println("[SEND] Status: SUCCESS - packet delivered");
+    Serial.println(
+        "[ESPNOW] STATUS: SUCCESS");
   }
   else
   {
-    Serial.println("[SEND] Status: FAILED - packet not delivered");
+    Serial.println(
+        "[ESPNOW] STATUS: FAILED");
   }
-  Serial.println("[SEND] ----- End of Callback -----");
-  Serial.println();
+
+  Serial.println(
+      "[ESPNOW] =========================");
 }
+
+// =====================================================
+// SEND MESSAGE
+// =====================================================
+
+void sendMessage(
+    int messageValue,
+    const char *messageName)
+{
+  outgoingData.value = messageValue;
+
+  Serial.println();
+  Serial.println(
+      "[SEND] ===============================");
+
+  Serial.printf(
+      "[SEND] Event: %s\n",
+      messageName);
+
+  Serial.printf(
+      "[SEND] Value: %d\n",
+      outgoingData.value);
+
+  Serial.printf(
+      "[SEND] Packet size: %d bytes\n",
+      sizeof(outgoingData));
+
+  esp_err_t result =
+      esp_now_send(
+          receiverMAC,
+          (uint8_t *)&outgoingData,
+          sizeof(outgoingData));
+
+  Serial.printf(
+      "[SEND] esp_now_send(): %s (0x%x)\n",
+      (result == ESP_OK)
+          ? "ESP_OK"
+          : esp_err_to_name(result),
+      result);
+
+  if (result != ESP_OK)
+  {
+    Serial.println(
+        "[SEND] ERROR: Failed to start transmission");
+  }
+
+  Serial.println(
+      "[SEND] ===============================");
+}
+
+// =====================================================
+// SETUP
+// =====================================================
 
 void setup()
 {
   Serial.begin(115200);
-  Serial.println();
-  Serial.println("[BOOT] ========================================");
-  Serial.println("[BOOT] Daughter Node Booting...");
-  Serial.println("[BOOT] ========================================");
-  Serial.printf("[BOOT] Firmware: Daughter Node v1.0\r\n");
-  Serial.printf("[BOOT] Compiled: %s %s\r\n", __DATE__, __TIME__);
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-  Serial.println("[BOOT] Button pin initialized (INPUT_PULLUP on GPIO 27)");
+  delay(1000);
+
+  Serial.println();
+  Serial.println(
+      "========================================");
+
+  Serial.println(
+      "       LAKSHMAN REKHA");
+
+  Serial.println(
+      "          DAUGHTER NODE");
+
+  Serial.println(
+      "========================================");
+
+  // =================================================
+  // BUTTONS
+  // =================================================
+
+  pinMode(
+      INTRUSION_BUTTON_PIN,
+      INPUT_PULLUP);
+
+  pinMode(
+      SOS_BUTTON_PIN,
+      INPUT_PULLUP);
+
+  Serial.printf(
+      "[BUTTON] Intrusion button: GPIO %d\n",
+      INTRUSION_BUTTON_PIN);
+
+  Serial.printf(
+      "[BUTTON] SOS button: GPIO %d\n",
+      SOS_BUTTON_PIN);
+
+  Serial.println(
+      "[BUTTON] Using internal pull-up resistors");
+
+  // =================================================
+  // WIFI RADIO
+  // =================================================
 
   WiFi.mode(WIFI_STA);
-  Serial.println("[WIFI] WiFi set to STA mode");
 
-  // Force WiFi to a fixed channel
-  Serial.printf("[WIFI] Forcing channel to %d...\r\n", ESPNOW_CHANNEL);
+  // Disable Wi-Fi sleep for better ESP-NOW
+  // responsiveness.
+
+  WiFi.setSleep(false);
+
+  Serial.println(
+      "[WIFI] Mode: STA");
+
+  Serial.println(
+      "[WIFI] Sleep: DISABLED");
+
+  Serial.print(
+      "[WIFI] Daughter MAC: ");
+
+  Serial.println(
+      WiFi.macAddress());
+
+  // =================================================
+  // FORCE ESP-NOW CHANNEL
+  // =================================================
+
+  Serial.printf(
+      "[WIFI] Setting channel to %d...\n",
+      ESPNOW_CHANNEL);
+
   esp_wifi_set_promiscuous(true);
-  esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-  esp_wifi_set_promiscuous(false);
-  Serial.printf("[WIFI] Channel set to %d\r\n", ESPNOW_CHANNEL);
-  Serial.printf("[WIFI] Actual WiFi Channel: %d\r\n", WiFi.channel());
-  Serial.printf("[WIFI] MAC Address: %s\r\n", WiFi.macAddress().c_str());
 
-  Serial.println("[BOOT] Stage 1/2: Initializing ESP-NOW...");
-  esp_err_t ret = esp_now_init();
-  if (ret != ESP_OK)
+  esp_err_t channelResult =
+      esp_wifi_set_channel(
+          ESPNOW_CHANNEL,
+          WIFI_SECOND_CHAN_NONE);
+
+  esp_wifi_set_promiscuous(false);
+
+  if (channelResult == ESP_OK)
   {
-    Serial.printf("[ERROR] ESP-NOW Init Failed: %s (0x%x)\r\n", esp_err_to_name(ret), ret);
-    return;
+    Serial.println(
+        "[WIFI] Channel configured successfully");
   }
   else
   {
-    Serial.println("[ESPNOW] ESP-NOW initialized successfully");
+    Serial.printf(
+        "[ERROR] Channel configuration failed: %s\n",
+        esp_err_to_name(channelResult));
   }
 
-  esp_now_register_send_cb(OnDataSent);
-  Serial.println("[ESPNOW] Send callback registered");
+  // Get actual radio channel
 
-  Serial.println("[BOOT] Stage 2/2: Adding peer...");
-  memcpy(peerInfo.peer_addr, receiverMAC, 6);
-  peerInfo.channel = ESPNOW_CHANNEL; // Fixed channel
+  uint8_t primaryChannel;
+  wifi_second_chan_t secondaryChannel;
+
+  esp_wifi_get_channel(
+      &primaryChannel,
+      &secondaryChannel);
+
+  Serial.printf(
+      "[WIFI] Actual radio channel: %d\n",
+      primaryChannel);
+
+  // =================================================
+  // CHANNEL CHECK
+  // =================================================
+
+  if (primaryChannel == ESPNOW_CHANNEL)
+  {
+    Serial.println(
+        "[WIFI] CHANNEL CHECK: PASS");
+  }
+  else
+  {
+    Serial.println(
+        "[WIFI] CHANNEL CHECK: FAILED");
+
+    Serial.printf(
+        "[WIFI] Expected: %d\n",
+        ESPNOW_CHANNEL);
+
+    Serial.printf(
+        "[WIFI] Actual: %d\n",
+        primaryChannel);
+  }
+
+  // =================================================
+  // ESP-NOW INITIALIZATION
+  // =================================================
+
+  Serial.println(
+      "[ESPNOW] Initializing...");
+
+  esp_err_t result =
+      esp_now_init();
+
+  if (result != ESP_OK)
+  {
+    Serial.printf(
+        "[ERROR] ESP-NOW init failed: %s\n",
+        esp_err_to_name(result));
+
+    while (true)
+    {
+      delay(1000);
+    }
+  }
+
+  Serial.println(
+      "[ESPNOW] Initialized successfully");
+
+  // =================================================
+  // REGISTER SEND CALLBACK
+  // =================================================
+
+  esp_now_register_send_cb(
+      OnDataSent);
+
+  Serial.println(
+      "[ESPNOW] Send callback registered");
+
+  // =================================================
+  // CONFIGURE MOTHER PEER
+  // =================================================
+
+  memset(
+      &peerInfo,
+      0,
+      sizeof(peerInfo));
+
+  memcpy(
+      peerInfo.peer_addr,
+      receiverMAC,
+      6);
+
+  peerInfo.channel =
+      ESPNOW_CHANNEL;
+
   peerInfo.encrypt = false;
 
-  Serial.printf("[ESPNOW] Peer MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
-                peerInfo.peer_addr[0], peerInfo.peer_addr[1],
-                peerInfo.peer_addr[2], peerInfo.peer_addr[3],
-                peerInfo.peer_addr[4], peerInfo.peer_addr[5]);
-  Serial.printf("[ESPNOW] Peer Channel: %d\r\n", peerInfo.channel);
-  Serial.printf("[ESPNOW] Peer Encrypt: %s\r\n", peerInfo.encrypt ? "Yes" : "No");
-
-  ret = esp_now_add_peer(&peerInfo);
-  if (ret != ESP_OK)
-  {
-    Serial.printf("[ERROR] Failed to Add Peer: %s (0x%x)\r\n", esp_err_to_name(ret), ret);
-    return;
-  }
-  else
-  {
-    Serial.println("[ESPNOW] Peer added successfully");
-  }
-
-  Serial.println("[BOOT] ----------------------------------------");
-  Serial.println("[BOOT] Daughter Node Ready");
-  Serial.printf("[BOOT] Button: GPIO%d (press to send)\r\n", BUTTON_PIN);
-  Serial.printf("[BOOT] Target MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
-                receiverMAC[0], receiverMAC[1], receiverMAC[2],
-                receiverMAC[3], receiverMAC[4], receiverMAC[5]);
-  Serial.printf("[BOOT] ESP-NOW Channel: %d\r\n", ESPNOW_CHANNEL);
-  Serial.println("[BOOT] ----------------------------------------");
   Serial.println();
+  Serial.println(
+      "[ESPNOW] Mother configuration:");
+
+  Serial.printf(
+      "[ESPNOW] Mother MAC: %02X:%02X:%02X:%02X:%02X:%02X:%02X\n",
+      receiverMAC[0],
+      receiverMAC[1],
+      receiverMAC[2],
+      receiverMAC[3],
+      receiverMAC[4],
+      receiverMAC[5]);
+
+  Serial.printf(
+      "[ESPNOW] Mother channel: %d\n",
+      peerInfo.channel);
+
+  // =================================================
+  // ADD MOTHER AS PEER
+  // =================================================
+
+  result =
+      esp_now_add_peer(
+          &peerInfo);
+
+  if (result != ESP_OK)
+  {
+    Serial.printf(
+        "[ERROR] Failed to add Mother peer: %s\n",
+        esp_err_to_name(result));
+
+    while (true)
+    {
+      delay(1000);
+    }
+  }
+
+  Serial.println(
+      "[ESPNOW] Mother peer added successfully");
+
+  // =================================================
+  // READY
+  // =================================================
+
+  Serial.println();
+  Serial.println(
+      "========================================");
+
+  Serial.println(
+      "       DAUGHTER NODE READY");
+
+  Serial.println(
+      "========================================");
+
+  Serial.printf(
+      "GPIO %d -> INTRUSION\n",
+      INTRUSION_BUTTON_PIN);
+
+  Serial.printf(
+      "GPIO %d -> SOS\n",
+      SOS_BUTTON_PIN);
+
+  Serial.printf(
+      "ESP-NOW CHANNEL -> %d\n",
+      ESPNOW_CHANNEL);
+
+  Serial.println(
+      "========================================");
 }
 
-
+// =====================================================
+// LOOP
+// =====================================================
 
 void loop()
 {
-  bool pressed = (digitalRead(BUTTON_PIN) == LOW);
+  // =================================================
+  // READ BUTTONS
+  // =================================================
 
-  // --- Button just pressed: start timing ---
-  if (pressed && !buttonPressed)
+  bool intrusionState =
+      digitalRead(
+          INTRUSION_BUTTON_PIN);
+
+  bool sosState =
+      digitalRead(
+          SOS_BUTTON_PIN);
+
+  // =================================================
+  // INTRUSION BUTTON
+  // =================================================
+
+  if (intrusionState == LOW &&
+      lastIntrusionState == HIGH)
   {
-    buttonPressed = true;
-    sosSentThisPress = false;
-    pressStart = millis();
+    Serial.println();
+    Serial.println(
+        "[BUTTON] INTRUSION PRESSED");
 
-    Serial.println("[BUTTON] Button PRESSED (GPIO 27 -> LOW)");
+    // value = 1
+
+    sendMessage(
+        1,
+        "INTRUSION");
+
+    // Debounce
+
+    delay(200);
   }
 
-  // --- Long-press threshold reached: send SOS exactly once ---
-  if (pressed && buttonPressed && !sosSentThisPress && (millis() - pressStart >= SOS_HOLD_TIME))
+  // =================================================
+  // SOS BUTTON
+  // =================================================
+
+  if (sosState == LOW &&
+      lastSOSState == HIGH)
   {
-    sosSentThisPress = true;
-    outgoingData.value = 2;
+    Serial.println();
+    Serial.println(
+        "[BUTTON] SOS PRESSED");
 
-    Serial.printf("[SEND] Preparing SOS packet: value=%d, size=%d bytes\r\n",
-                  outgoingData.value, sizeof(outgoingData));
+    // value = 2
 
-    esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&outgoingData, sizeof(outgoingData));
-    Serial.printf("[SEND] esp_now_send() returned: %s (0x%x)\r\n",
-                  (result == ESP_OK) ? "ESP_OK" : esp_err_to_name(result), result);
+    sendMessage(
+        2,
+        "SOS");
 
-    if (result != ESP_OK)
-    {
-      Serial.println("[ERROR] SOS send failed! Check peer status and channel.");
-    }
-    Serial.println("[SEND] SOS packet sent, waiting for callback...");
+    // Debounce
+
+    delay(200);
   }
 
-  // --- Button released ---
-  if (!pressed && buttonPressed)
-  {
-    buttonPressed = false;
+  // =================================================
+  // SAVE BUTTON STATES
+  // =================================================
 
-    if (sosSentThisPress)
-    {
-      // Was a long press — SOS already sent above, nothing more to do
-      Serial.println("[BUTTON] Button released after SOS");
-    }
-    else
-    {
-      // Short press (< 3 s) — send intrusion
-      outgoingData.value = 1;
+  lastIntrusionState =
+      intrusionState;
 
-      Serial.printf("[SEND] Preparing intrusion packet: value=%d, size=%d bytes\r\n",
-                    outgoingData.value, sizeof(outgoingData));
+  lastSOSState =
+      sosState;
 
-      esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&outgoingData, sizeof(outgoingData));
-      Serial.printf("[SEND] esp_now_send() returned: %s (0x%x)\r\n",
-                    (result == ESP_OK) ? "ESP_OK" : esp_err_to_name(result), result);
-
-      if (result != ESP_OK)
-      {
-        Serial.println("[ERROR] Send failed! Check peer status and channel.");
-      }
-      Serial.println("[SEND] Intrusion packet sent, waiting for callback...");
-    }
-  }
+  delay(10);
 }
